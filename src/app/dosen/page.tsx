@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useTransition, useCallback } from "react";
 import Link from "next/link";
 import {
   GraduationCap,
@@ -13,6 +13,7 @@ import {
   CheckCircle,
   ChatCircleDots,
   CaretRight,
+  CircleNotch,
 } from "@phosphor-icons/react";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
@@ -20,61 +21,54 @@ import { RoleHeader } from "@/components/RoleHeader";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { dosenNav } from "@/lib/nav";
-import { dosen } from "@/lib/roles";
+import { useDemo } from "@/lib/demo-context";
+import {
+  getDosenDashboardDataAction,
+  koreksiPresensiDosenAction,
+  type KelasDosenDetail,
+  type EwsStudentItem,
+  type MahasiswaKelasDosen,
+} from "@/app/actions/dosen";
 
 const statIcons = [GraduationCap, UsersThree, WarningCircle];
 
-type KelasDosen = (typeof dosen.kelas)[number];
-type MahasiswaDosen = KelasDosen["mahasiswa"][number];
-
-interface EwsItem {
-  nama: string;
-  nim: string;
-  kelas: string;
-  persen: number;
-}
-
-function KelasDetail({ kelas }: { kelas: KelasDosen }) {
-  const [filter, setFilter] = useState<"semua" | number>("semua");
-  const [mahasiswa, setMahasiswa] = useState<MahasiswaDosen[]>(() =>
-    kelas.mahasiswa.map((m) => ({ ...m, kehadiran: [...m.kehadiran] })),
-  );
+function KelasDetail({
+  kelas,
+  onPresensiUpdated,
+}: {
+  kelas: KelasDosenDetail;
+  onPresensiUpdated: () => void;
+}) {
+  const [filterSesiId, setFilterSesiId] = useState<string>("semua");
   const [bypassed, setBypassed] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  const total = kelas.pertemuan.length;
-  const selectedPertemuan = filter === "semua" ? null : filter;
+  const pertemuans = kelas.pertemuanList;
 
-  function persen(m: MahasiswaDosen) {
-    const hadir = m.kehadiran.filter(Boolean).length;
-    return Math.round((hadir / total) * 100);
-  }
+  async function handleKoreksi(mhs: MahasiswaKelasDosen) {
+    if (filterSesiId === "semua") return;
+    const currentHadir = Boolean(mhs.kehadiranPerSesi[filterSesiId]);
+    const nextStatus = currentHadir ? "alpha" : "hadir";
 
-  function nilai(m: MahasiswaDosen) {
-    return ((persen(m) * kelas.bobot) / 100).toFixed(1);
-  }
+    setIsUpdating(true);
+    try {
+      const res = await koreksiPresensiDosenAction({
+        sesiId: filterSesiId,
+        mahasiswaId: mhs.id,
+        status: nextStatus,
+      });
 
-  function koreksi(nim: string, nama: string) {
-    if (selectedPertemuan === null) return;
-    setMahasiswa((prev) =>
-      prev.map((m) => {
-        if (m.nim === nim) {
-          const nextState = !m.kehadiran[selectedPertemuan];
-          setToastMessage(
-            `Presensi ${nama} untuk ${kelas.pertemuan[selectedPertemuan]} diubah menjadi ${nextState ? "Hadir" : "Tidak Hadir"
-            }.`,
-          );
-          setTimeout(() => setToastMessage(null), 3000);
-          return {
-            ...m,
-            kehadiran: m.kehadiran.map((k, i) =>
-              i === selectedPertemuan ? nextState : k,
-            ),
-          };
-        }
-        return m;
-      }),
-    );
+      if (res.success) {
+        setToastMessage(
+          `Presensi ${mhs.nama} diubah menjadi ${nextStatus === "hadir" ? "HADIR" : "ALPHA"}.`
+        );
+        setTimeout(() => setToastMessage(null), 3000);
+        onPresensiUpdated();
+      }
+    } finally {
+      setIsUpdating(false);
+    }
   }
 
   function toggleBypass() {
@@ -82,8 +76,8 @@ function KelasDetail({ kelas }: { kelas: KelasDosen }) {
     setBypassed(next);
     setToastMessage(
       next
-        ? "Bypass Darurat Aktif: Mahasiswa diizinkan absen tanpa batasan radius."
-        : "Bypass Darurat Dimatikan: Validasi radius geofencing kembali normal.",
+        ? "Bypass Darurat Aktif: Mahasiswa diizinkan absen tanpa batasan radius untuk sesi ini."
+        : "Bypass Darurat Dimatikan: Validasi radius geofencing kembali normal."
     );
     setTimeout(() => setToastMessage(null), 3500);
   }
@@ -102,73 +96,94 @@ function KelasDetail({ kelas }: { kelas: KelasDosen }) {
       <div className="flex gap-1.5 overflow-x-auto pb-1">
         <button
           type="button"
-          onClick={() => setFilter("semua")}
-          className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${filter === "semua" ? "bg-primary text-white" : "bg-line text-muted"
-            }`}
+          onClick={() => setFilterSesiId("semua")}
+          className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+            filterSesiId === "semua"
+              ? "bg-primary text-white"
+              : "bg-line text-muted hover:text-ink"
+          }`}
         >
           Semua Pertemuan
         </button>
-        {kelas.pertemuan.map((pertemuan, index) => (
+        {pertemuans.map((p) => (
           <button
-            key={pertemuan}
+            key={p.id}
             type="button"
-            onClick={() => setFilter(index)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${filter === index ? "bg-primary text-white" : "bg-line text-muted"
-              }`}
+            onClick={() => setFilterSesiId(p.id)}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+              filterSesiId === p.id
+                ? "bg-primary text-white"
+                : "bg-line text-muted hover:text-ink"
+            }`}
           >
-            {pertemuan}
+            {p.label}
           </button>
         ))}
       </div>
 
       {/* Daftar Mahasiswa */}
       <div className="space-y-2">
-        {mahasiswa.map((m) => (
-          <div key={m.nim} className="rounded-xl bg-background p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="font-semibold text-ink text-xs">{m.nama}</p>
-                <p className="text-[11px] text-faint">{m.nim}</p>
+        {kelas.mahasiswaList.map((m) => {
+          const isHadirInFiltered =
+            filterSesiId !== "semua"
+              ? Boolean(m.kehadiranPerSesi[filterSesiId])
+              : false;
+
+          return (
+            <div key={m.id} className="rounded-xl bg-background p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-ink text-xs">{m.nama}</p>
+                  <p className="text-[11px] text-faint">{m.nim}</p>
+                </div>
+
+                {filterSesiId === "semua" ? (
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-ink">
+                      {m.persenKehadiran}%
+                    </p>
+                    <p className="text-[10px] text-faint">
+                      Poin Nilai: {m.poinKehadiran}
+                    </p>
+                  </div>
+                ) : (
+                  <StatusBadge status={isHadirInFiltered ? "Hadir" : "Alpha"} />
+                )}
               </div>
 
-              {selectedPertemuan === null ? (
-                <div className="text-right">
-                  <p className="text-sm font-bold text-ink">{persen(m)}%</p>
-                  <p className="text-[10px] text-faint">Poin Kehadiran: {nilai(m)}</p>
-                </div>
-              ) : (
-                <StatusBadge
-                  status={m.kehadiran[selectedPertemuan] ? "Hadir" : "Tidak Hadir"}
-                />
+              {filterSesiId !== "semua" && (
+                <button
+                  type="button"
+                  disabled={isUpdating}
+                  onClick={() => handleKoreksi(m)}
+                  className="mt-2 flex items-center gap-1 text-[11px] font-bold text-primary hover:underline cursor-pointer disabled:opacity-50"
+                >
+                  <PencilSimple size={13} />
+                  <span>Koreksi Presensi ({isHadirInFiltered ? "Jadikan Alpha" : "Jadikan Hadir"})</span>
+                </button>
               )}
             </div>
-
-            {selectedPertemuan !== null && (
-              <button
-                type="button"
-                onClick={() => koreksi(m.nim, m.nama)}
-                className="mt-2 flex items-center gap-1 text-[11px] font-bold text-primary hover:underline cursor-pointer"
-              >
-                <PencilSimple size={13} />
-                Koreksi Presensi
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Bypass Button */}
-      {selectedPertemuan !== null && (
+      {filterSesiId !== "semua" && (
         <button
           type="button"
           onClick={toggleBypass}
-          className={`flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-xs font-bold transition-all cursor-pointer ${bypassed
-            ? "bg-success text-success-ink shadow-xs"
-            : "bg-primary text-white hover:bg-primary-strong shadow-md"
-            }`}
+          className={`flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-xs font-bold transition-all cursor-pointer ${
+            bypassed
+              ? "bg-success text-success-ink shadow-xs"
+              : "bg-primary text-white hover:bg-primary-strong shadow-md"
+          }`}
         >
           <Key size={16} />
-          {bypassed ? "Bypass Darurat Aktif (Klik untuk Matikan)" : "Buka Kelas (Bypass Darurat)"}
+          <span>
+            {bypassed
+              ? "Bypass Darurat Aktif (Klik untuk Matikan)"
+              : "Buka Kelas (Bypass Darurat)"}
+          </span>
         </button>
       )}
     </div>
@@ -176,9 +191,34 @@ function KelasDetail({ kelas }: { kelas: KelasDosen }) {
 }
 
 export default function DosenPage() {
+  const { currentUser } = useDemo();
+  const [isPending, startTransition] = useTransition();
+
+  const [data, setData] = useState<{
+    profile: any;
+    stats: Array<{ label: string; value: string }>;
+    kelasDetails: KelasDosenDetail[];
+    ewsStudents: EwsStudentItem[];
+  } | null>(null);
+
   const [expanded, setExpanded] = useState<string | null>("TI-3A");
-  const [selectedEws, setSelectedEws] = useState<EwsItem | null>(null);
+  const [selectedEws, setSelectedEws] = useState<EwsStudentItem | null>(null);
   const [ewsContacted, setEwsContacted] = useState<string | null>(null);
+
+  const fetchData = useCallback(() => {
+    startTransition(async () => {
+      try {
+        const res = await getDosenDashboardDataAction(currentUser.id);
+        setData(res);
+      } catch (err) {
+        console.error("Gagal memuat data dosen:", err);
+      }
+    });
+  }, [currentUser.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleContactEws = () => {
     if (selectedEws) {
@@ -188,10 +228,24 @@ export default function DosenPage() {
     }
   };
 
+  const profileNama = data?.profile?.nama || currentUser.nama;
+  const statsList = data?.stats || [
+    { label: "Kelas Diampu", value: "1" },
+    { label: "Total Mahasiswa", value: "2" },
+    { label: "Peringatan EWS (<75%)", value: "1" },
+  ];
+  const kelasList = data?.kelasDetails || [];
+  const ewsList = data?.ewsStudents || [];
+
   return (
     <AppShell items={dosenNav}>
       <div className="space-y-6">
-        <RoleHeader nama={dosen.nama} role={dosen.role} />
+        <div className="flex items-center justify-between">
+          <RoleHeader nama={profileNama} role="Dosen Pengampu" />
+          {isPending && (
+            <CircleNotch size={18} className="animate-spin text-primary" />
+          )}
+        </div>
 
         {/* Notifikasi Kontak EWS */}
         {ewsContacted && (
@@ -201,10 +255,10 @@ export default function DosenPage() {
           </div>
         )}
 
-        {/* Statistik */}
+        {/* Statistik Nyata */}
         <section id="dasbor" className="grid grid-cols-3 gap-2.5 scroll-mt-6">
-          {dosen.stats.map((stat, i) => {
-            const Icon = statIcons[i];
+          {statsList.map((stat, i) => {
+            const Icon = statIcons[i] || GraduationCap;
             return (
               <StatCard
                 key={stat.label}
@@ -224,14 +278,17 @@ export default function DosenPage() {
               <p className="text-xs text-muted">Semester Ganjil 2026/2027</p>
             </div>
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-              {dosen.kelas.length} Kelas
+              {kelasList.length} Kelas
             </span>
           </div>
 
-          {dosen.kelas.map((kelas) => {
+          {kelasList.map((kelas) => {
             const isOpen = expanded === kelas.kelas;
             return (
-              <div key={kelas.kelas} className="rounded-2xl bg-surface p-4 shadow-sm border border-line">
+              <div
+                key={kelas.kelas}
+                className="rounded-2xl bg-surface p-4 shadow-sm border border-line"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <span className="rounded bg-background px-1.5 py-0.5 text-[10px] font-bold text-primary">
@@ -239,7 +296,7 @@ export default function DosenPage() {
                     </span>
                     <h3 className="mt-1 text-base font-bold text-ink">{kelas.nama}</h3>
                     <p className="text-xs text-muted">
-                      {kelas.mahasiswa.length} mahasiswa terdaftar · Bobot Absen {kelas.bobot}%
+                      {kelas.mahasiswaList.length} mahasiswa terdaftar · Bobot Absen {kelas.bobot}% · Lokasi {kelas.gedung}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -260,100 +317,107 @@ export default function DosenPage() {
                   </div>
                 </div>
 
-                {isOpen && <KelasDetail kelas={kelas} />}
+                {isOpen && (
+                  <KelasDetail kelas={kelas} onPresensiUpdated={fetchData} />
+                )}
               </div>
             );
           })}
         </section>
 
-        {/* EWS */}
+        {/* Early Warning System (EWS <75%) */}
         <section id="ews" className="space-y-3 scroll-mt-6">
           <div>
-            <h2 className="text-lg font-bold text-ink">Tindak Lanjut</h2>
+            <h2 className="text-lg font-bold text-ink">Tindak Lanjut (EWS)</h2>
             <p className="text-xs text-muted">Mahasiswa dengan tingkat kehadiran di bawah 75%.</p>
           </div>
 
           <div className="space-y-2.5">
-            {dosen.ews.map((item) => (
-              <button
-                key={item.nim}
-                type="button"
-                onClick={() => setSelectedEws(item)}
-                className="w-full text-left flex items-center justify-between rounded-2xl bg-surface p-4 shadow-sm border border-line hover:border-danger/40 transition-all cursor-pointer active:scale-[0.99]"
-              >
-                <div>
-                  <p className="font-bold text-ink text-sm">{item.nama}</p>
-                  <p className="text-xs text-faint">
-                    {item.nim} · {item.kelas}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="danger">{item.persen}%</Badge>
-                  <span className="flex items-center gap-0.5 text-xs font-semibold text-primary">
-                    <span>Tindakan</span>
-                    <CaretRight size={13} />
-                  </span>
-                </div>
-              </button>
-            ))}
+            {ewsList.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-line p-4 text-center text-xs text-muted">
+                Semua mahasiswa memenuhi batas kehadiran &ge;75%.
+              </div>
+            ) : (
+              ewsList.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedEws(item)}
+                  className="w-full text-left flex items-center justify-between rounded-2xl bg-surface p-4 shadow-sm border border-line hover:border-danger/40 transition-all cursor-pointer active:scale-[0.99]"
+                >
+                  <div>
+                    <p className="font-bold text-ink text-sm">{item.nama}</p>
+                    <p className="text-xs text-faint">
+                      {item.nim} · {item.kelas} ({item.matkul})
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="danger">{item.persen}%</Badge>
+                    <span className="flex items-center gap-0.5 text-xs font-semibold text-primary">
+                      <span>Tindakan</span>
+                      <CaretRight size={13} />
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </section>
-      </div>
 
-      {/* Modal Tindakan EWS Dosen */}
-      {selectedEws && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div
-            className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-2xl animate-fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-line pb-3">
-              <div>
-                <span className="rounded bg-danger/20 px-2 py-0.5 text-[10px] font-bold text-danger-ink">
-                  Kehadiran Tindak Lanjut ({selectedEws.persen}%)
-                </span>
-                <h3 className="mt-1 text-base font-bold text-ink">Beri Peringatan Mahasiswa</h3>
+        {/* Modal Tindak Lanjut EWS */}
+        {selectedEws && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+            <div
+              className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-2xl animate-fade-in"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-line pb-3">
+                <h3 className="text-base font-bold text-ink">Peringatan Kehadiran</h3>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEws(null)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-background text-muted hover:text-ink cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedEws(null)}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-background text-muted hover:text-ink cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
 
-            <div className="mt-4 rounded-2xl bg-background p-3 text-xs space-y-1">
-              <p className="font-bold text-ink text-sm">{selectedEws.nama}</p>
-              <p className="text-muted">{selectedEws.nim} · {selectedEws.kelas}</p>
-              <p className="text-danger-ink font-semibold mt-1">
-                Total Kehadiran: {selectedEws.persen}% (Syarat Ujian Minimal: 75%)
-              </p>
-            </div>
+              <div className="mt-4 space-y-3 text-xs">
+                <div className="rounded-2xl bg-danger/10 p-3.5 border border-danger/20">
+                  <p className="font-bold text-danger-ink">{selectedEws.nama}</p>
+                  <p className="text-danger-ink/90 mt-0.5">
+                    {selectedEws.nim} · Kelas {selectedEws.kelas}
+                  </p>
+                  <p className="mt-2 text-base font-extrabold text-danger-ink">
+                    Persentase: {selectedEws.persen}% (Di bawah 75%)
+                  </p>
+                </div>
+                <p className="text-muted leading-relaxed">
+                  Tingkat kehadiran mahasiswa ini berada di zona kritis. Anda dapat mengirimkan surat teguran / pesan pengingat ke kontak mahasiswa.
+                </p>
+              </div>
 
-            <p className="mt-3 text-xs text-muted leading-relaxed">
-              Kirimkan teguran melalui pesan WhatsApp resmi dosen pengampu untuk meminta konfirmasi kendala kehadiran mahasiswa.
-            </p>
-
-            <div className="mt-5 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedEws(null)}
-                className="flex-1 rounded-full border border-line py-2.5 text-xs font-semibold text-muted hover:bg-background cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleContactEws}
-                className="flex-1 rounded-full bg-primary py-2.5 text-xs font-bold text-white hover:bg-primary-strong cursor-pointer"
-              >
-                Kirim Chat WA
-              </button>
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedEws(null)}
+                  className="flex-1 rounded-full border border-line py-2.5 text-xs font-semibold text-muted hover:bg-background cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleContactEws}
+                  className="flex-1 rounded-full bg-primary py-2.5 text-xs font-bold text-white hover:bg-primary-strong cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <ChatCircleDots size={16} weight="fill" />
+                  <span>Kirim Pesan</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </AppShell>
   );
 }

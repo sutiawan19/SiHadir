@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { MasterGedungRecord } from "./types";
 
 export const BaakService = {
@@ -6,7 +6,7 @@ export const BaakService = {
    * Mengambil semua master gedung
    */
   async getAllGedung(): Promise<MasterGedungRecord[]> {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("master_gedung")
       .select("*")
@@ -25,7 +25,7 @@ export const BaakService = {
     longPusat: number;
     radiusMeter: number;
   }): Promise<MasterGedungRecord | null> {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("master_gedung")
       .insert({
@@ -48,7 +48,7 @@ export const BaakService = {
     gedungId: string,
     radiusMeter: number
   ): Promise<boolean> {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { error } = await supabase
       .from("master_gedung")
       .update({ radius_meter: radiusMeter })
@@ -70,7 +70,7 @@ export const BaakService = {
     waktuMulai: string;
     waktuSelesai: string;
   }): Promise<boolean> {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { error } = await supabase.from("jadwal_kelas").insert({
       matkul_id: params.matkulId,
       dosen_id: params.dosenId,

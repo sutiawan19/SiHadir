@@ -102,5 +102,58 @@ export const SesiService = {
 
     return !error;
   },
+
+  /**
+   * Batalkan delegasi wewenang PJ
+   */
+  async batalkanDelegasiPj(jadwalId: string, tanggal?: string): Promise<boolean> {
+    const supabase = createAdminClient();
+    const tgl = tanggal || new Date().toISOString().split("T")[0];
+
+    const { error } = await supabase
+      .from("delegasi_pj")
+      .delete()
+      .eq("jadwal_id", jadwalId)
+      .eq("tanggal", tgl);
+
+    return !error;
+  },
+
+  /**
+   * Mengambil semua riwayat sesi perkuliahan untuk kelas tertentu
+   */
+  async getRiwayatSesi(jadwalId: string): Promise<SesiPerkuliahanDetail[]> {
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+      .from("sesi_perkuliahan")
+      .select("*")
+      .eq("jadwal_id", jadwalId)
+      .order("tanggal", { ascending: false });
+
+    if (error || !data) return [];
+    return data as SesiPerkuliahanDetail[];
+  },
+
+  /**
+   * Selesaikan laporan sesi yang tertunggak
+   */
+  async selesaikanTunggakan(params: {
+    sesiId: string;
+    metode: MetodeKelas;
+    statusDosen: StatusDosen;
+    dilaporkanOleh: string;
+  }): Promise<boolean> {
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from("sesi_perkuliahan")
+      .update({
+        metode_kelas: params.metode,
+        status_dosen: params.statusDosen,
+        dilaporkan_oleh: params.dilaporkanOleh,
+      })
+      .eq("id", params.sesiId);
+
+    return !error;
+  },
 };
 

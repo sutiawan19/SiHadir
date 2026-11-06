@@ -1,75 +1,107 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState, useTransition, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CaretLeft, Key, PencilSimple, CheckCircle } from "@phosphor-icons/react";
+import {
+  CaretLeft,
+  Key,
+  PencilSimple,
+  CheckCircle,
+  CircleNotch,
+} from "@phosphor-icons/react";
 import { StatusBadge } from "@/components/StatusBadge";
-import { dosen } from "@/lib/roles";
-
-type KelasDosen = (typeof dosen.kelas)[number];
-type MahasiswaDosen = KelasDosen["mahasiswa"][number];
+import { useDemo } from "@/lib/demo-context";
+import {
+  getDosenDashboardDataAction,
+  koreksiPresensiDosenAction,
+  type KelasDosenDetail,
+  type MahasiswaKelasDosen,
+} from "@/app/actions/dosen";
 
 function DosenKelasDetailContent() {
   const params = useParams<{ kelas: string }>();
   const decodedKelas = params.kelas ? decodeURIComponent(params.kelas) : "";
-  const kelas = dosen.kelas.find((k) => k.kelas === decodedKelas);
+  const { currentUser } = useDemo();
+  const [isPending, startTransition] = useTransition();
 
-  const [filter, setFilter] = useState<"semua" | number>("semua");
-  const [mahasiswa, setMahasiswa] = useState<MahasiswaDosen[]>(() =>
-    kelas ? kelas.mahasiswa.map((m) => ({ ...m, kehadiran: [...m.kehadiran] })) : [],
-  );
+  const [kelasData, setKelasData] = useState<KelasDosenDetail | null>(null);
+  const [filterSesiId, setFilterSesiId] = useState<string>("semua");
   const [bypassed, setBypassed] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  if (!kelas) {
+  const loadData = useCallback(() => {
+    startTransition(async () => {
+      try {
+        const res = await getDosenDashboardDataAction(currentUser.id);
+        const match = res.kelasDetails.find((k) => k.kelas === decodedKelas);
+        if (match) {
+          setKelasData(match);
+        } else if (res.kelasDetails.length > 0) {
+          setKelasData(res.kelasDetails[0]);
+        }
+      } catch (err) {
+        console.error("Gagal memuat detail kelas dosen:", err);
+      }
+    });
+  }, [currentUser.id, decodedKelas]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  if (!kelasData && isPending) {
     return (
-      <div className="mx-auto min-h-dvh w-full max-w-md bg-background px-4 pt-6">
-        <Link
-          href="/dosen"
-          className="flex items-center gap-1 text-sm font-medium text-muted"
-        >
-          <CaretLeft size={18} />
-          Kembali
-        </Link>
-        <p className="mt-6 text-muted">Kelas tidak ditemukan.</p>
+      <div className="mx-auto min-h-dvh w-full max-w-md bg-background px-4 pt-12 text-center text-xs text-muted flex flex-col items-center justify-center gap-2">
+        <CircleNotch size={24} className="animate-spin text-primary" />
+        <span>Memuat data kelas perkuliahan...</span>
       </div>
     );
   }
 
-  const bobot = kelas.bobot;
-  const total = kelas.pertemuan.length;
-  const selectedPertemuan = filter === "semua" ? null : filter;
-
-  function persen(m: MahasiswaDosen) {
-    const hadir = m.kehadiran.filter(Boolean).length;
-    return Math.round((hadir / total) * 100);
-  }
-
-  function nilai(m: MahasiswaDosen) {
-    return ((persen(m) * bobot) / 100).toFixed(1);
-  }
-
-  function koreksi(nim: string, nama: string) {
-    if (selectedPertemuan === null) return;
-    setMahasiswa((prev) =>
-      prev.map((m) => {
-        if (m.nim === nim) {
-          const nextState = !m.kehadiran[selectedPertemuan];
-          setToastMessage(
-            `Presensi ${nama} diperbarui menjadi ${nextState ? "Hadir" : "Tidak Hadir"}.`,
-          );
-          setTimeout(() => setToastMessage(null), 3000);
-          return {
-            ...m,
-            kehadiran: m.kehadiran.map((k, i) =>
-              i === selectedPertemuan ? nextState : k,
-            ),
-          };
-        }
-        return m;
-      }),
+  if (!kelasData) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md bg-background px-4 pt-6">
+        <Link
+          href="/dosen"
+          className="flex items-center gap-1 text-sm font-medium text-muted hover:text-ink"
+        >
+          <CaretLeft size={18} />
+          Kembali
+        </Link>
+        <p className="mt-6 text-muted text-xs">Kelas tidak ditemukan.</p>
+      </div>
     );
+  }
+
+  const pertemuans = kelasData.pertemuanList;
+
+  async function handleKoreksi(mhs: MahasiswaKelasDosen) {
+    if (filterSesiId === "semua") return;
+    const currentHadir = Boolean(mhs.kehadiranPerSesi[filterSesiId]);
+    const nextStatus = currentHadir ? "alpha" : "hadir";
+
+    setIsUpdating(true);
+    try {
+      const res = await koreksiPresensiDosenAction({
+        sesiId: filterSesiId,
+        mahasiswaId: mhs.id,
+        status: nextStatus,
+      });
+
+      if (res.success) {
+        setToastMessage(
+          `Presensi ${mhs.nama} diubah menjadi ${
+            nextStatus === "hadir" ? "HADIR" : "ALPHA"
+          }.`
+        );
+        setTimeout(() => setToastMessage(null), 3000);
+        loadData();
+      }
+    } finally {
+      setIsUpdating(false);
+    }
   }
 
   function toggleBypass() {
@@ -78,7 +110,7 @@ function DosenKelasDetailContent() {
     setToastMessage(
       next
         ? "Bypass Darurat Aktif: Mahasiswa diizinkan absen tanpa batasan radius."
-        : "Bypass Darurat Dimatikan: Validasi radius geofencing kembali normal.",
+        : "Bypass Darurat Dimatikan: Validasi radius geofencing kembali normal."
     );
     setTimeout(() => setToastMessage(null), 3500);
   }
@@ -94,9 +126,9 @@ function DosenKelasDetailContent() {
         </Link>
         <div>
           <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
-            {kelas.kelas}
+            {kelasData.kelas}
           </span>
-          <h1 className="text-lg font-bold text-ink">{kelas.nama}</h1>
+          <h1 className="text-lg font-bold text-ink">{kelasData.nama}</h1>
         </div>
       </header>
 
@@ -112,72 +144,99 @@ function DosenKelasDetailContent() {
         <div className="flex gap-2 overflow-x-auto pb-1">
           <button
             type="button"
-            onClick={() => setFilter("semua")}
+            onClick={() => setFilterSesiId("semua")}
             className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-              filter === "semua" ? "bg-primary text-white" : "bg-line text-muted"
+              filterSesiId === "semua"
+                ? "bg-primary text-white"
+                : "bg-line text-muted hover:text-ink"
             }`}
           >
             Semua
           </button>
-          {kelas.pertemuan.map((pertemuan, index) => (
+          {pertemuans.map((p) => (
             <button
-              key={pertemuan}
+              key={p.id}
               type="button"
-              onClick={() => setFilter(index)}
+              onClick={() => setFilterSesiId(p.id)}
               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-                filter === index ? "bg-primary text-white" : "bg-line text-muted"
+                filterSesiId === p.id
+                  ? "bg-primary text-white"
+                  : "bg-line text-muted hover:text-ink"
               }`}
             >
-              {pertemuan}
+              {p.label}
             </button>
           ))}
         </div>
 
         <div className="space-y-2">
-          {mahasiswa.map((m) => (
-            <div key={m.nim} className="rounded-2xl bg-surface p-3.5 shadow-sm border border-line">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="font-bold text-ink text-sm">{m.nama}</p>
-                  <p className="text-xs text-faint">{m.nim}</p>
+          {kelasData.mahasiswaList.map((m) => {
+            const isHadirInFiltered =
+              filterSesiId !== "semua"
+                ? Boolean(m.kehadiranPerSesi[filterSesiId])
+                : false;
+
+            return (
+              <div
+                key={m.id}
+                className="rounded-2xl bg-surface p-3.5 shadow-sm border border-line"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-bold text-ink text-sm">{m.nama}</p>
+                    <p className="text-xs text-faint">{m.nim}</p>
+                  </div>
+
+                  {filterSesiId === "semua" ? (
+                    <div className="text-right">
+                      <p className="text-base font-bold text-ink">
+                        {m.persenKehadiran}%
+                      </p>
+                      <p className="text-xs text-faint">
+                        Poin Kehadiran: {m.poinKehadiran}
+                      </p>
+                    </div>
+                  ) : (
+                    <StatusBadge
+                      status={isHadirInFiltered ? "Hadir" : "Alpha"}
+                    />
+                  )}
                 </div>
 
-                {selectedPertemuan === null ? (
-                  <div className="text-right">
-                    <p className="text-base font-bold text-ink">{persen(m)}%</p>
-                    <p className="text-xs text-faint">Poin Kehadiran: {nilai(m)}</p>
-                  </div>
-                ) : (
-                  <StatusBadge
-                    status={m.kehadiran[selectedPertemuan] ? "Hadir" : "Tidak Hadir"}
-                  />
+                {filterSesiId !== "semua" && (
+                  <button
+                    type="button"
+                    disabled={isUpdating}
+                    onClick={() => handleKoreksi(m)}
+                    className="mt-2.5 flex items-center gap-1 text-xs font-bold text-primary hover:underline cursor-pointer disabled:opacity-50"
+                  >
+                    <PencilSimple size={14} />
+                    <span>
+                      Koreksi Presensi ({isHadirInFiltered ? "Jadikan Alpha" : "Jadikan Hadir"})
+                    </span>
+                  </button>
                 )}
               </div>
-
-              {selectedPertemuan !== null && (
-                <button
-                  type="button"
-                  onClick={() => koreksi(m.nim, m.nama)}
-                  className="mt-2.5 flex items-center gap-1 text-xs font-bold text-primary hover:underline cursor-pointer"
-                >
-                  <PencilSimple size={14} />
-                  Koreksi Presensi
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {selectedPertemuan !== null && (
+        {filterSesiId !== "semua" && (
           <button
             type="button"
             onClick={toggleBypass}
             className={`flex w-full items-center justify-center gap-2 rounded-full py-3 text-xs font-bold transition-all cursor-pointer shadow-md ${
-              bypassed ? "bg-success text-success-ink" : "bg-primary text-white hover:bg-primary-strong"
+              bypassed
+                ? "bg-success text-success-ink"
+                : "bg-primary text-white hover:bg-primary-strong"
             }`}
           >
             <Key size={16} />
-            {bypassed ? "Bypass Darurat Aktif (Matikan)" : "Buka Kelas (Bypass Darurat)"}
+            <span>
+              {bypassed
+                ? "Bypass Darurat Aktif (Matikan)"
+                : "Buka Kelas (Bypass Darurat)"}
+            </span>
           </button>
         )}
       </main>
@@ -187,7 +246,13 @@ function DosenKelasDetailContent() {
 
 export default function DosenKelasDetailPage() {
   return (
-    <Suspense fallback={<div className="mx-auto min-h-dvh w-full max-w-md bg-background p-6 text-center text-xs text-muted">Memuat detail kelas...</div>}>
+    <Suspense
+      fallback={
+        <div className="mx-auto min-h-dvh w-full max-w-md bg-background p-6 text-center text-xs text-muted">
+          Memuat detail kelas...
+        </div>
+      }
+    >
       <DosenKelasDetailContent />
     </Suspense>
   );
