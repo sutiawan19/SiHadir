@@ -132,11 +132,10 @@ export default function KaprodiPage() {
                   key={st}
                   type="button"
                   onClick={() => setFilterStatus(st)}
-                  className={`rounded-full px-2.5 py-1 font-semibold transition-colors cursor-pointer ${
-                    filterStatus === st
-                      ? "bg-primary text-white"
-                      : "bg-background text-muted hover:text-ink"
-                  }`}
+                  className={`rounded-full px-2.5 py-1 font-semibold transition-colors cursor-pointer ${filterStatus === st
+                    ? "bg-primary text-white"
+                    : "bg-background text-muted hover:text-ink"
+                    }`}
                 >
                   {st}
                 </button>
@@ -163,12 +162,12 @@ export default function KaprodiPage() {
           </div>
         </section>
 
-        {/* Peringatan Dini (EWS) */}
+        {/* Tindak Lanjut */}
         <section id="ews" className="space-y-3 scroll-mt-6">
           <div>
-            <h2 className="text-lg font-bold text-ink">Peringatan Dini (EWS)</h2>
+            <h2 className="text-lg font-bold text-ink">Tindak Lanjut</h2>
             <p className="text-xs text-muted">
-              Mahasiswa dengan tingkat kehadiran kritis di bawah 75%. Klik untuk tindakan intervensi prodi.
+              Mahasiswa dengan tingkat kehadiran Tindak Lanjut di bawah 75%. Klik untuk tindakan intervensi prodi.
             </p>
           </div>
 

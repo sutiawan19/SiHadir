@@ -4,7 +4,7 @@ export const dosen = {
   stats: [
     { label: "Kelas Aktif", value: "3" },
     { label: "Total Mahasiswa", value: "128" },
-    { label: "Kritis (<75%)", value: "7" },
+    { label: "Tindak Lanjut (<75%)", value: "7" },
   ],
   kelas: [
     {
@@ -72,7 +72,7 @@ export const kaprodi = {
   stats: [
     { label: "Kelas Aktif", value: "12" },
     { label: "Total Mahasiswa", value: "320" },
-    { label: "Kritis (<75%)", value: "19" },
+    { label: "Tindak Lanjut (<75%)", value: "19" },
   ],
   aktivitas: [
     { nama: "Sistem Enterprise", kelas: "TI-3A", dosen: "Agun Guntara", status: "Berlangsung" },

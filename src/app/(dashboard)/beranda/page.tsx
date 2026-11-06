@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -15,27 +15,60 @@ import {
   Buildings,
   ArrowRight,
   CaretRight,
+  CircleNotch,
 } from "@phosphor-icons/react";
 import { StatusBadge } from "@/components/StatusBadge";
-import {
-  aksesCepat,
-  kelasBerikutnya,
-  notifikasiMahasiswa,
-  riwayatKehadiran,
-  type RiwayatItem,
-} from "@/lib/mock";
+import { aksesCepat } from "@/lib/mock";
 import { useDemo } from "@/lib/demo-context";
+import { getBerandaDataAction } from "@/app/actions/attendance";
+import { formatHari, formatJam, formatTanggalIndo } from "@/lib/format";
+import type { PresensiRecord } from "@/services/types";
 
 export default function BerandaPage() {
   const { currentUser } = useDemo();
-  const [selectedRiwayat, setSelectedRiwayat] = useState<RiwayatItem | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const [berandaData, setBerandaData] = useState<{
+    profile: any;
+    kelasBerikutnya: any;
+    sesiHariIni: any;
+    sudahAbsenHariIni: boolean;
+    riwayat: PresensiRecord[];
+    delegasiNotification: { aktif: boolean; pesan: string } | null;
+  } | null>(null);
+
+  const [selectedRiwayat, setSelectedRiwayat] = useState<PresensiRecord | null>(null);
   const [modalAkses, setModalAkses] = useState<string | null>(null);
+
+  useEffect(() => {
+    startTransition(async () => {
+      try {
+        const res = await getBerandaDataAction(currentUser.id);
+        setBerandaData(res);
+      } catch (err) {
+        console.error("Gagal memuat data beranda:", err);
+      }
+    });
+  }, [currentUser.id]);
+
+  const profileNama = berandaData?.profile?.nama || currentUser.nama;
+  const firstName = profileNama.split(" ")[0];
+  const kelas = berandaData?.kelasBerikutnya;
+  const sesi = berandaData?.sesiHariIni;
+  const sudahAbsen = berandaData?.sudahAbsenHariIni ?? false;
+  const riwayatList = berandaData?.riwayat || [];
+  const delegasi = berandaData?.delegasiNotification;
 
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between">
         <div>
-          <p className="text-muted">Halo, {currentUser.nama.split(" ")[0]}!</p>
+          <div className="flex items-center gap-2">
+            <p className="text-muted">Halo, {firstName}!</p>
+            {isPending && (
+              <CircleNotch size={14} className="animate-spin text-primary" />
+            )}
+          </div>
           <h1 className="mt-1 text-2xl font-bold leading-tight text-ink">
             Semangat ya
             <br />
@@ -58,8 +91,8 @@ export default function BerandaPage() {
         </div>
       </header>
 
-      {/* Pemberitahuan Delegasi PJ (bisa diklik menuju tugas PJ) */}
-      {notifikasiMahasiswa.delegasiPj.aktif && (
+      {/* Pemberitahuan Delegasi PJ */}
+      {delegasi?.aktif && (
         <Link
           href="/pj"
           className="flex items-start gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-4 transition-all hover:bg-primary/15 active:scale-[0.99] group"
@@ -75,43 +108,64 @@ export default function BerandaPage() {
                 <ArrowRight size={13} />
               </span>
             </div>
-            <p className="text-muted mt-0.5">{notifikasiMahasiswa.delegasiPj.pesan}</p>
+            <p className="text-muted mt-0.5">{delegasi.pesan}</p>
           </div>
         </Link>
       )}
 
-      {/* Kartu Kelas Berikutnya */}
+      {/* Kartu Kelas Hari Ini / Berikutnya */}
       <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#468b92] to-[#e5b336] p-4 shadow-sm">
         <div className="flex items-stretch gap-3">
           <div className="flex-1 rounded-2xl bg-surface p-4">
             <div className="flex items-center justify-between">
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-                Kelas Hari Ini
+                {sesi ? "Sesi Aktif Hari Ini" : "Jadwal Perkuliahan"}
               </span>
-              <span className="text-[11px] font-medium text-accent">Gedung A</span>
+              <span className="text-[11px] font-medium text-accent">
+                {kelas?.gedung?.nama_gedung || "Gedung A"}
+              </span>
             </div>
-            <h2 className="mt-2 text-lg font-bold text-ink">{kelasBerikutnya.nama}</h2>
-            <p className="mt-0.5 text-xs text-muted">{kelasBerikutnya.dosen}</p>
+            <h2 className="mt-2 text-lg font-bold text-ink">
+              {kelas?.matkul?.nama_matkul || "Sistem Enterprise"}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">
+              {kelas?.dosen?.nama || "Agun Guntara, S.Kom., M.Kom"}
+            </p>
 
             <div className="mt-3 space-y-1.5 text-xs text-muted">
               <p className="flex items-center gap-2">
                 <CalendarBlank size={16} className="text-primary" />
-                {kelasBerikutnya.hari}, {kelasBerikutnya.waktu}
+                <span>
+                  {kelas
+                    ? `${formatHari(kelas.hari)}, ${formatJam(kelas.waktu_mulai)} - ${formatJam(kelas.waktu_selesai)} WIB`
+                    : "Rabu, 08.00 - 10.00 WIB"}
+                </span>
               </p>
               <p className="flex items-center gap-2">
                 <GraduationCap size={16} className="text-primary" />
-                {kelasBerikutnya.metode} (Radius 60m)
+                <span>
+                  {sesi?.metode_kelas === "daring"
+                    ? "Daring (One-Click)"
+                    : `Luring (Radius ${kelas?.gedung?.radius_meter || 60}m)`}
+                </span>
               </p>
             </div>
 
             <div className="my-3.5 h-px bg-line" />
 
-            <Link
-              href="/kehadiran"
-              className="block rounded-full bg-primary py-2.5 text-center text-xs font-bold text-white shadow-xs transition-colors hover:bg-primary-strong active:scale-[0.98]"
-            >
-              Absen Sekarang!
-            </Link>
+            {sudahAbsen ? (
+              <div className="flex items-center justify-center gap-2 rounded-full bg-success/15 border border-success/30 py-2.5 text-center text-xs font-bold text-success-ink">
+                <CheckCircle size={16} weight="fill" />
+                <span>Sudah Presensi Hari Ini</span>
+              </div>
+            ) : (
+              <Link
+                href="/kehadiran"
+                className="block rounded-full bg-primary py-2.5 text-center text-xs font-bold text-white shadow-xs transition-colors hover:bg-primary-strong active:scale-[0.98]"
+              >
+                Absen Sekarang!
+              </Link>
+            )}
           </div>
 
           <div className="relative w-24 shrink-0 flex items-center justify-center">
@@ -126,7 +180,7 @@ export default function BerandaPage() {
         </div>
       </section>
 
-      {/* Riwayat Kehadiran (Interaktif Detail) */}
+      {/* Riwayat Kehadiran (Real dari Supabase) */}
       <section>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-ink">Riwayat Kehadiran</h2>
@@ -135,32 +189,42 @@ export default function BerandaPage() {
           </Link>
         </div>
         <div className="mt-3 space-y-3">
-          {riwayatKehadiran.slice(0, 3).map((item) => (
-            <button
-              key={item.kode}
-              type="button"
-              onClick={() => setSelectedRiwayat(item)}
-              className="w-full text-left rounded-2xl bg-surface p-4 shadow-sm border border-transparent hover:border-primary/20 transition-all active:scale-[0.99] cursor-pointer"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <span className="rounded bg-background px-1.5 py-0.5 text-[10px] font-semibold text-faint">
-                    {item.kode}
-                  </span>
-                  <h3 className="mt-1 text-base font-semibold text-ink">{item.nama}</h3>
-                </div>
-                <StatusBadge status={item.status} />
-              </div>
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted">
-                <ClockCounterClockwise size={14} />
-                {item.waktu}
-                <span className="flex items-center gap-0.5 text-primary font-medium ml-auto">
-                  <span>Detail</span>
-                  <CaretRight size={13} />
-                </span>
-              </p>
-            </button>
-          ))}
+          {riwayatList.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-line p-6 text-center text-xs text-muted">
+              Belum ada riwayat kehadiran tercatat.
+            </div>
+          ) : (
+            riwayatList.slice(0, 3).map((item) => {
+              const matkulKode = item.sesi?.jadwal?.matkul?.kode_matkul || "TI-301";
+              const matkulNama = item.sesi?.jadwal?.matkul?.nama_matkul || "Sistem Enterprise";
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedRiwayat(item)}
+                  className="w-full text-left rounded-2xl bg-surface p-4 shadow-sm border border-transparent hover:border-primary/20 transition-all active:scale-[0.99] cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="rounded bg-background px-1.5 py-0.5 text-[10px] font-semibold text-faint">
+                        {matkulKode}
+                      </span>
+                      <h3 className="mt-1 text-base font-semibold text-ink">{matkulNama}</h3>
+                    </div>
+                    <StatusBadge status={item.status} />
+                  </div>
+                  <p className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+                    <ClockCounterClockwise size={14} />
+                    {formatTanggalIndo(item.waktu_hadir)}
+                    <span className="flex items-center gap-0.5 text-primary font-medium ml-auto">
+                      <span>Detail</span>
+                      <CaretRight size={13} />
+                    </span>
+                  </p>
+                </button>
+              );
+            })
+          )}
         </div>
       </section>
 
@@ -187,7 +251,7 @@ export default function BerandaPage() {
         </div>
       </section>
 
-      {/* Modal Detail Presensi */}
+      {/* Modal Detail Presensi Real */}
       {selectedRiwayat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
           <div
@@ -197,7 +261,7 @@ export default function BerandaPage() {
             <div className="flex items-center justify-between border-b border-line pb-3">
               <div>
                 <span className="rounded bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-                  {selectedRiwayat.kode}
+                  {selectedRiwayat.sesi?.jadwal?.matkul?.kode_matkul || "TI-301"}
                 </span>
                 <h3 className="mt-1 text-base font-bold text-ink">Detail Presensi</h3>
               </div>
@@ -213,7 +277,12 @@ export default function BerandaPage() {
             <div className="mt-4 space-y-3">
               <div>
                 <p className="text-xs text-muted">Mata Kuliah</p>
-                <p className="text-sm font-bold text-ink">{selectedRiwayat.nama}</p>
+                <p className="text-sm font-bold text-ink">
+                  {selectedRiwayat.sesi?.jadwal?.matkul?.nama_matkul || "Sistem Enterprise"}
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  Kelas {selectedRiwayat.sesi?.jadwal?.kelas || "TI-3A"}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -225,31 +294,49 @@ export default function BerandaPage() {
                 </div>
                 <div className="rounded-xl bg-background p-3">
                   <p className="text-[11px] text-muted">Metode</p>
-                  <p className="mt-1 text-xs font-bold text-ink">Luring (Tatap Muka)</p>
+                  <p className="mt-1 text-xs font-bold text-ink">
+                    {selectedRiwayat.sesi?.metode_kelas === "daring"
+                      ? "Daring (Online)"
+                      : "Luring (Tatap Muka)"}
+                  </p>
                 </div>
               </div>
 
-              <div className="rounded-xl bg-background p-3 space-y-1.5 text-xs">
+              <div className="rounded-xl bg-background p-3 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-muted flex items-center gap-1.5">
                     <ClockCounterClockwise size={14} /> Waktu Tercatat
                   </span>
-                  <span className="font-semibold text-ink">{selectedRiwayat.waktu}</span>
+                  <span className="font-semibold text-ink">
+                    {formatTanggalIndo(selectedRiwayat.waktu_hadir)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted flex items-center gap-1.5">
                     <Buildings size={14} /> Lokasi
                   </span>
-                  <span className="font-semibold text-ink">Gedung A (R. 302)</span>
+                  <span className="font-semibold text-ink">
+                    {selectedRiwayat.sesi?.jadwal?.gedung?.nama_gedung || "Gedung A"}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted flex items-center gap-1.5">
                     <MapPin size={14} /> Jarak Geofencing
                   </span>
                   <span className="font-semibold text-success-ink">
-                    38 meter (Valid &lt;60m)
+                    {selectedRiwayat.jarak_meter != null
+                      ? `${selectedRiwayat.jarak_meter} meter (Valid <60m)`
+                      : "Sesi Daring (Valid)"}
                   </span>
                 </div>
+                {selectedRiwayat.lat_mhs && selectedRiwayat.long_mhs && (
+                  <div className="flex items-center justify-between text-[11px] text-muted pt-1 border-t border-line/60">
+                    <span>Koordinat GPS</span>
+                    <span className="font-mono">
+                      {selectedRiwayat.lat_mhs.toFixed(5)}, {selectedRiwayat.long_mhs.toFixed(5)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -268,7 +355,7 @@ export default function BerandaPage() {
       {modalAkses && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
           <div
-            className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-2xl text-center"
+            className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-2xl text-center animate-fade-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent/20 text-ink">

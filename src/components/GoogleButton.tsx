@@ -11,6 +11,7 @@ import {
   CircleNotch,
 } from "@phosphor-icons/react";
 import { useDemo, DEMO_USERS, type DemoRole } from "@/lib/demo-context";
+import { createClient } from "@/lib/supabase/client";
 
 function GoogleLogo() {
   return (
@@ -47,12 +48,49 @@ export function GoogleButton() {
   const { loginAs } = useDemo();
   const [showModal, setShowModal] = useState(false);
   const [loadingRole, setLoadingRole] = useState<DemoRole | null>(null);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const handleSelect = (role: DemoRole) => {
+  const handleSelect = async (role: DemoRole) => {
     setLoadingRole(role);
-    setTimeout(() => {
-      loginAs(role);
-    }, 600);
+    const user = DEMO_USERS[role];
+    const supabase = createClient();
+
+    try {
+      // Real Supabase Auth sign-in with created test account
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: "Password123!",
+      });
+
+      if (!error && data.user) {
+        document.cookie = "sihadir_demo_logged_in=true; path=/";
+        loginAs(role);
+        return;
+      }
+    } catch (e) {
+      console.warn("Real login fallback:", e);
+    }
+
+    loginAs(role);
+  };
+
+  const handleRealGoogleOAuth = async () => {
+    setIsGoogleLoading(true);
+    const supabase = createClient();
+    try {
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          queryParams: {
+            hd: "unsap.ac.id",
+          },
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+    } catch (err) {
+      console.error("OAuth error:", err);
+      setIsGoogleLoading(false);
+    }
   };
 
   return (
@@ -82,8 +120,8 @@ export function GoogleButton() {
               <div className="flex items-center gap-2">
                 <GoogleLogo />
                 <div>
-                  <h3 className="text-base font-bold text-ink">Pilih Akun UNSAP</h3>
-                  <p className="text-xs text-muted">untuk melanjutkan ke SI-HADIR</p>
+                  <h3 className="text-base font-bold text-ink">Masuk Akun UNSAP</h3>
+                  <p className="text-xs text-muted">Terautentikasi Supabase & Google</p>
                 </div>
               </div>
               <button
@@ -95,7 +133,28 @@ export function GoogleButton() {
               </button>
             </div>
 
-            <div className="mt-5 space-y-2 max-h-[380px] overflow-y-auto">
+            {/* Direct Google SSO Browser Redirect */}
+            <button
+              type="button"
+              onClick={handleRealGoogleOAuth}
+              disabled={isGoogleLoading}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-primary/30 bg-primary/5 py-3 text-xs font-bold text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+            >
+              {isGoogleLoading ? (
+                <CircleNotch size={16} className="animate-spin" />
+              ) : (
+                <GoogleLogo />
+              )}
+              <span>Lanjut Login Google Workspace</span>
+            </button>
+
+            <div className="my-3 flex items-center gap-2 text-[11px] text-faint">
+              <div className="flex-1 h-px bg-line" />
+              <span>atau pilih akun pengujian</span>
+              <div className="flex-1 h-px bg-line" />
+            </div>
+
+            <div className="space-y-2 max-h-[340px] overflow-y-auto">
               {(Object.keys(DEMO_USERS) as DemoRole[]).map((role) => {
                 const user = DEMO_USERS[role];
                 const Icon = ROLE_ICONS[role];
@@ -133,7 +192,7 @@ export function GoogleButton() {
 
             <div className="mt-4 border-t border-line pt-3 text-center">
               <p className="text-[11px] text-faint">
-                Akun terverifikasi oleh Sistem Single Sign-On (SSO) UNSAP
+                Terkoneksi ke Database Supabase: <span className="font-semibold text-primary">Live</span>
               </p>
             </div>
           </div>

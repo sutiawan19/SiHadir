@@ -61,8 +61,7 @@ function KelasDetail({ kelas }: { kelas: KelasDosen }) {
         if (m.nim === nim) {
           const nextState = !m.kehadiran[selectedPertemuan];
           setToastMessage(
-            `Presensi ${nama} untuk ${kelas.pertemuan[selectedPertemuan]} diubah menjadi ${
-              nextState ? "Hadir" : "Tidak Hadir"
+            `Presensi ${nama} untuk ${kelas.pertemuan[selectedPertemuan]} diubah menjadi ${nextState ? "Hadir" : "Tidak Hadir"
             }.`,
           );
           setTimeout(() => setToastMessage(null), 3000);
@@ -104,9 +103,8 @@ function KelasDetail({ kelas }: { kelas: KelasDosen }) {
         <button
           type="button"
           onClick={() => setFilter("semua")}
-          className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-            filter === "semua" ? "bg-primary text-white" : "bg-line text-muted"
-          }`}
+          className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${filter === "semua" ? "bg-primary text-white" : "bg-line text-muted"
+            }`}
         >
           Semua Pertemuan
         </button>
@@ -115,9 +113,8 @@ function KelasDetail({ kelas }: { kelas: KelasDosen }) {
             key={pertemuan}
             type="button"
             onClick={() => setFilter(index)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-              filter === index ? "bg-primary text-white" : "bg-line text-muted"
-            }`}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${filter === index ? "bg-primary text-white" : "bg-line text-muted"
+              }`}
           >
             {pertemuan}
           </button>
@@ -165,11 +162,10 @@ function KelasDetail({ kelas }: { kelas: KelasDosen }) {
         <button
           type="button"
           onClick={toggleBypass}
-          className={`flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-xs font-bold transition-all cursor-pointer ${
-            bypassed
-              ? "bg-success text-success-ink shadow-xs"
-              : "bg-primary text-white hover:bg-primary-strong shadow-md"
-          }`}
+          className={`flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-xs font-bold transition-all cursor-pointer ${bypassed
+            ? "bg-success text-success-ink shadow-xs"
+            : "bg-primary text-white hover:bg-primary-strong shadow-md"
+            }`}
         >
           <Key size={16} />
           {bypassed ? "Bypass Darurat Aktif (Klik untuk Matikan)" : "Buka Kelas (Bypass Darurat)"}
@@ -273,7 +269,7 @@ export default function DosenPage() {
         {/* EWS */}
         <section id="ews" className="space-y-3 scroll-mt-6">
           <div>
-            <h2 className="text-lg font-bold text-ink">Peringatan Dini (EWS)</h2>
+            <h2 className="text-lg font-bold text-ink">Tindak Lanjut</h2>
             <p className="text-xs text-muted">Mahasiswa dengan tingkat kehadiran di bawah 75%.</p>
           </div>
 
@@ -314,7 +310,7 @@ export default function DosenPage() {
             <div className="flex items-center justify-between border-b border-line pb-3">
               <div>
                 <span className="rounded bg-danger/20 px-2 py-0.5 text-[10px] font-bold text-danger-ink">
-                  Kehadiran Kritis ({selectedEws.persen}%)
+                  Kehadiran Tindak Lanjut ({selectedEws.persen}%)
                 </span>
                 <h3 className="mt-1 text-base font-bold text-ink">Beri Peringatan Mahasiswa</h3>
               </div>

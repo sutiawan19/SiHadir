@@ -77,7 +77,7 @@ docs/
 - `/dashboard/mahasiswa`: jadwal, rekam presensi (luring geofencing / daring one-click lock), notifikasi delegasi.
 - `/dashboard/pj`: form laporan cepat (metode + status dosen, trigger buka sesi), lock tunggakan (Force Action), menu Delegasi Tugas.
 - `/dashboard/dosen`: nilai absensi otomatis, bypass darurat, koreksi presensi, EWS.
-- `/dashboard/kaprodi`: indikator aktivitas kelas, EWS mahasiswa kritis.
+- `/dashboard/kaprodi`: indikator aktivitas kelas, EWS mahasiswa Tindak Lanjut.
 - `/dashboard/baak`: master gedung, jadwal, radius lokasi.
 
 ## 10. Urutan Implementasi (Fase)
@@ -87,7 +87,7 @@ docs/
 3. **Service Abstraction** — interface + implementasi Supabase, seed data.
 4. **Modul PJ** — form laporan + trigger buka sesi, Force Action tunggakan, Delegasi Tugas + PJ Pengganti.
 5. **Modul Presensi** — Server Action Haversine luring + one-click lock daring, deteksi mock dasar.
-6. **Dasbor Dosen & EWS** — nilai absensi otomatis, bypass, koreksi, peringatan kritis <75%.
+6. **Dasbor Dosen & EWS** — nilai absensi otomatis, bypass, koreksi, peringatan Tindak Lanjut <75%.
 7. **Kaprodi & BAAK** — indikator kelas, master data.
 8. **Polish & Deploy** — styling sesuai Figma, validasi, deploy Vercel.
 

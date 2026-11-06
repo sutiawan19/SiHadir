@@ -6,33 +6,32 @@
 create extension if not exists pgcrypto;
 
 -- -------------------------------------------------------------
--- Enum
+-- 1. Enum
 -- -------------------------------------------------------------
-create type public.user_role as enum ('mahasiswa', 'dosen', 'kaprodi', 'baak');
-create type public.metode_kelas as enum ('daring', 'luring');
-create type public.status_dosen as enum ('hadir', 'terlambat', 'izin', 'sakit', 'tidak_hadir');
-create type public.status_presensi as enum ('hadir', 'terlambat', 'izin', 'sakit', 'alpha');
+do $$ begin
+  create type public.user_role as enum ('mahasiswa', 'dosen', 'kaprodi', 'baak');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.metode_kelas as enum ('daring', 'luring');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.status_dosen as enum ('hadir', 'terlambat', 'izin', 'sakit', 'tidak_hadir');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.status_presensi as enum ('hadir', 'terlambat', 'izin', 'sakit', 'alpha');
+exception when duplicate_object then null;
+end $$;
 
 -- -------------------------------------------------------------
--- Helper role check (security definer, dipakai di kebijakan RLS)
+-- 2. Tabel: prodi
 -- -------------------------------------------------------------
-create or replace function public.has_role(r public.user_role)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = r
-  );
-$$;
-
--- -------------------------------------------------------------
--- Tabel: prodi
--- -------------------------------------------------------------
-create table public.prodi (
+create table if not exists public.prodi (
   id          uuid primary key default gen_random_uuid(),
   nama_prodi  text not null,
   fakultas    text,
@@ -40,9 +39,9 @@ create table public.prodi (
 );
 
 -- -------------------------------------------------------------
--- Tabel: profiles (menaut ke auth.users)
+-- 3. Tabel: profiles (menaut ke auth.users)
 -- -------------------------------------------------------------
-create table public.profiles (
+create table if not exists public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   email       text not null unique,
   nama        text not null,
@@ -52,14 +51,32 @@ create table public.profiles (
   updated_at  timestamptz not null default now()
 );
 
--- kaprodi menunjuk balik ke profiles (ditambahkan setelah profiles ada)
+-- Kolom relasi kaprodi ke profiles
 alter table public.prodi
-  add column kaprodi_id uuid references public.profiles(id) on delete set null;
+  add column if not exists kaprodi_id uuid references public.profiles(id) on delete set null;
 
 -- -------------------------------------------------------------
--- Tabel: master_gedung
+-- 4. Helper role check (Dibuat SETELAH tabel profiles ada)
 -- -------------------------------------------------------------
-create table public.master_gedung (
+create or replace function public.has_role(r public.user_role)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  return exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = r
+  );
+end;
+$$;
+
+-- -------------------------------------------------------------
+-- 5. Tabel: master_gedung
+-- -------------------------------------------------------------
+create table if not exists public.master_gedung (
   id            uuid primary key default gen_random_uuid(),
   nama_gedung   text not null,
   lat_pusat     double precision not null,
@@ -70,9 +87,9 @@ create table public.master_gedung (
 );
 
 -- -------------------------------------------------------------
--- Tabel: mata_kuliah
+-- 6. Tabel: mata_kuliah
 -- -------------------------------------------------------------
-create table public.mata_kuliah (
+create table if not exists public.mata_kuliah (
   id                 uuid primary key default gen_random_uuid(),
   kode_matkul        text not null unique,
   nama_matkul        text not null,
@@ -84,10 +101,10 @@ create table public.mata_kuliah (
 );
 
 -- -------------------------------------------------------------
--- Tabel: jadwal_kelas
+-- 7. Tabel: jadwal_kelas
 -- hari: 0=Senin, 1=Selasa, 2=Rabu, 3=Kamis, 4=Jumat, 5=Sabtu, 6=Minggu
 -- -------------------------------------------------------------
-create table public.jadwal_kelas (
+create table if not exists public.jadwal_kelas (
   id            uuid primary key default gen_random_uuid(),
   matkul_id     uuid not null references public.mata_kuliah(id) on delete cascade,
   dosen_id      uuid not null references public.profiles(id) on delete cascade,
@@ -101,9 +118,9 @@ create table public.jadwal_kelas (
 );
 
 -- -------------------------------------------------------------
--- Tabel: peserta_kelas (enrollment mahasiswa per jadwal)
+-- 8. Tabel: peserta_kelas (enrollment mahasiswa per jadwal)
 -- -------------------------------------------------------------
-create table public.peserta_kelas (
+create table if not exists public.peserta_kelas (
   id            uuid primary key default gen_random_uuid(),
   jadwal_id     uuid not null references public.jadwal_kelas(id) on delete cascade,
   mahasiswa_id  uuid not null references public.profiles(id) on delete cascade,
@@ -112,9 +129,9 @@ create table public.peserta_kelas (
 );
 
 -- -------------------------------------------------------------
--- Tabel: delegasi_pj (handover mandiri, berlaku 1 pertemuan)
+-- 9. Tabel: delegasi_pj (handover mandiri, berlaku 1 pertemuan)
 -- -------------------------------------------------------------
-create table public.delegasi_pj (
+create table if not exists public.delegasi_pj (
   id              uuid primary key default gen_random_uuid(),
   jadwal_id       uuid not null references public.jadwal_kelas(id) on delete cascade,
   tanggal         date not null,
@@ -126,9 +143,9 @@ create table public.delegasi_pj (
 );
 
 -- -------------------------------------------------------------
--- Tabel: sesi_perkuliahan (instance pertemuan per tanggal)
+-- 10. Tabel: sesi_perkuliahan (instance pertemuan per tanggal)
 -- -------------------------------------------------------------
-create table public.sesi_perkuliahan (
+create table if not exists public.sesi_perkuliahan (
   id              uuid primary key default gen_random_uuid(),
   jadwal_id       uuid not null references public.jadwal_kelas(id) on delete cascade,
   tanggal         date not null,
@@ -143,9 +160,9 @@ create table public.sesi_perkuliahan (
 );
 
 -- -------------------------------------------------------------
--- Tabel: presensi_mahasiswa
+-- 11. Tabel: presensi_mahasiswa
 -- -------------------------------------------------------------
-create table public.presensi_mahasiswa (
+create table if not exists public.presensi_mahasiswa (
   id            uuid primary key default gen_random_uuid(),
   sesi_id       uuid not null references public.sesi_perkuliahan(id) on delete cascade,
   mahasiswa_id  uuid not null references public.profiles(id) on delete cascade,
@@ -159,7 +176,7 @@ create table public.presensi_mahasiswa (
 );
 
 -- -------------------------------------------------------------
--- View: agregat nilai kehadiran per mahasiswa per mata kuliah
+-- 12. View: agregat nilai kehadiran per mahasiswa per mata kuliah
 -- -------------------------------------------------------------
 create or replace view public.nilai_absensi as
 select
@@ -181,7 +198,7 @@ left join public.presensi_mahasiswa pm
 group by pk.mahasiswa_id, j.matkul_id;
 
 -- -------------------------------------------------------------
--- Trigger: sinkronisasi profiles saat user baru dibuat
+-- 13. Trigger: sinkronisasi profiles saat user baru dibuat
 -- -------------------------------------------------------------
 create or replace function public.handle_new_user()
 returns trigger
@@ -206,12 +223,13 @@ begin
 end;
 $$;
 
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
 -- -------------------------------------------------------------
--- RLS — aktifkan untuk semua tabel
+-- 14. RLS — aktifkan untuk semua tabel
 -- -------------------------------------------------------------
 alter table public.prodi             enable row level security;
 alter table public.profiles          enable row level security;
@@ -223,246 +241,167 @@ alter table public.delegasi_pj       enable row level security;
 alter table public.sesi_perkuliahan  enable row level security;
 alter table public.presensi_mahasiswa enable row level security;
 
--- =============================================================
--- KEBIJAKAN RLS
--- =============================================================
+-- ---------------- Kebijakan RLS (Idempotent: Drop & Recreate) ----------------
+drop policy if exists "prodi_baca_semua" on public.prodi;
+create policy "prodi_baca_semua" on public.prodi for select to authenticated using (true);
 
--- ---------------- prodi ----------------
-create policy "prodi_baca_semua" on public.prodi
-  for select to authenticated using (true);
+drop policy if exists "prodi_kelola_baak" on public.prodi;
+create policy "prodi_kelola_baak" on public.prodi for all to authenticated using (public.has_role('baak')) with check (public.has_role('baak'));
 
-create policy "prodi_kelola_baak" on public.prodi
-  for all to authenticated
-  using (public.has_role('baak'))
-  with check (public.has_role('baak'));
+drop policy if exists "profiles_baca_sendiri" on public.profiles;
+create policy "profiles_baca_sendiri" on public.profiles for select to authenticated using (id = auth.uid() or public.has_role('baak'));
 
--- ---------------- profiles ----------------
-create policy "profiles_baca_sendiri" on public.profiles
-  for select to authenticated
-  using (id = auth.uid() or public.has_role('baak'));
+drop policy if exists "profiles_update_sendiri" on public.profiles;
+create policy "profiles_update_sendiri" on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 
-create policy "profiles_update_sendiri" on public.profiles
-  for update to authenticated
-  using (id = auth.uid())
-  with check (id = auth.uid());
+drop policy if exists "profiles_kelola_baak" on public.profiles;
+create policy "profiles_kelola_baak" on public.profiles for all to authenticated using (public.has_role('baak')) with check (public.has_role('baak'));
 
-create policy "profiles_kelola_baak" on public.profiles
-  for all to authenticated
-  using (public.has_role('baak'))
-  with check (public.has_role('baak'));
+drop policy if exists "gedung_baca_semua" on public.master_gedung;
+create policy "gedung_baca_semua" on public.master_gedung for select to authenticated using (true);
 
--- ---------------- master_gedung ----------------
-create policy "gedung_baca_semua" on public.master_gedung
-  for select to authenticated using (true);
+drop policy if exists "gedung_kelola_baak" on public.master_gedung;
+create policy "gedung_kelola_baak" on public.master_gedung for all to authenticated using (public.has_role('baak')) with check (public.has_role('baak'));
 
-create policy "gedung_kelola_baak" on public.master_gedung
-  for all to authenticated
-  using (public.has_role('baak'))
-  with check (public.has_role('baak'));
+drop policy if exists "matkul_baca_semua" on public.mata_kuliah;
+create policy "matkul_baca_semua" on public.mata_kuliah for select to authenticated using (true);
 
--- ---------------- mata_kuliah ----------------
-create policy "matkul_baca_semua" on public.mata_kuliah
-  for select to authenticated using (true);
+drop policy if exists "matkul_kelola_baak" on public.mata_kuliah;
+create policy "matkul_kelola_baak" on public.mata_kuliah for all to authenticated using (public.has_role('baak')) with check (public.has_role('baak'));
 
-create policy "matkul_kelola_baak" on public.mata_kuliah
-  for all to authenticated
-  using (public.has_role('baak'))
-  with check (public.has_role('baak'));
+drop policy if exists "jadwal_baca_mahasiswa" on public.jadwal_kelas;
+create policy "jadwal_baca_mahasiswa" on public.jadwal_kelas for select to authenticated using (
+  exists (select 1 from public.peserta_kelas pk where pk.jadwal_id = jadwal_kelas.id and pk.mahasiswa_id = auth.uid())
+  or pj_id = auth.uid()
+);
 
--- ---------------- jadwal_kelas ----------------
-create policy "jadwal_baca_mahasiswa" on public.jadwal_kelas
-  for select to authenticated
-  using (
-    exists (
-      select 1 from public.peserta_kelas pk
-      where pk.jadwal_id = jadwal_kelas.id and pk.mahasiswa_id = auth.uid()
-    )
-    or pj_id = auth.uid()
-  );
+drop policy if exists "jadwal_baca_dosen" on public.jadwal_kelas;
+create policy "jadwal_baca_dosen" on public.jadwal_kelas for select to authenticated using (dosen_id = auth.uid());
 
-create policy "jadwal_baca_dosen" on public.jadwal_kelas
-  for select to authenticated
-  using (dosen_id = auth.uid());
+drop policy if exists "jadwal_baca_kaprodi" on public.jadwal_kelas;
+create policy "jadwal_baca_kaprodi" on public.jadwal_kelas for select to authenticated using (
+  exists (
+    select 1 from public.mata_kuliah mk
+    join public.profiles p on p.prodi_id = mk.prodi_id
+    where mk.id = jadwal_kelas.matkul_id and p.id = auth.uid() and p.role = 'kaprodi'
+  )
+);
 
-create policy "jadwal_baca_kaprodi" on public.jadwal_kelas
-  for select to authenticated
-  using (
-    exists (
-      select 1
-      from public.mata_kuliah mk
-      join public.profiles p on p.prodi_id = mk.prodi_id
-      where mk.id = jadwal_kelas.matkul_id
-        and p.id = auth.uid()
-        and p.role = 'kaprodi'
-    )
-  );
+drop policy if exists "jadwal_kelola_baak" on public.jadwal_kelas;
+create policy "jadwal_kelola_baak" on public.jadwal_kelas for all to authenticated using (public.has_role('baak')) with check (public.has_role('baak'));
 
-create policy "jadwal_kelola_baak" on public.jadwal_kelas
-  for all to authenticated
-  using (public.has_role('baak'))
-  with check (public.has_role('baak'));
+drop policy if exists "peserta_baca_mahasiswa" on public.peserta_kelas;
+create policy "peserta_baca_mahasiswa" on public.peserta_kelas for select to authenticated using (mahasiswa_id = auth.uid());
 
--- ---------------- peserta_kelas ----------------
-create policy "peserta_baca_mahasiswa" on public.peserta_kelas
-  for select to authenticated
-  using (mahasiswa_id = auth.uid());
+drop policy if exists "peserta_baca_dosen" on public.peserta_kelas;
+create policy "peserta_baca_dosen" on public.peserta_kelas for select to authenticated using (
+  exists (select 1 from public.jadwal_kelas j where j.id = peserta_kelas.jadwal_id and j.dosen_id = auth.uid())
+);
 
-create policy "peserta_baca_dosen" on public.peserta_kelas
-  for select to authenticated
-  using (
-    exists (
-      select 1 from public.jadwal_kelas j
-      where j.id = peserta_kelas.jadwal_id and j.dosen_id = auth.uid()
-    )
-  );
+drop policy if exists "peserta_kelola_baak" on public.peserta_kelas;
+create policy "peserta_kelola_baak" on public.peserta_kelas for all to authenticated using (public.has_role('baak')) with check (public.has_role('baak'));
 
-create policy "peserta_kelola_baak" on public.peserta_kelas
-  for all to authenticated
-  using (public.has_role('baak'))
-  with check (public.has_role('baak'));
+drop policy if exists "delegasi_buat_pj" on public.delegasi_pj;
+create policy "delegasi_buat_pj" on public.delegasi_pj for insert to authenticated with check (
+  exists (select 1 from public.jadwal_kelas j where j.id = jadwal_id and j.pj_id = auth.uid())
+);
 
--- ---------------- delegasi_pj ----------------
-create policy "delegasi_buat_pj" on public.delegasi_pj
-  for insert to authenticated
-  with check (
-    exists (
-      select 1 from public.jadwal_kelas j
-      where j.id = jadwal_id and j.pj_id = auth.uid()
-    )
-  );
+drop policy if exists "delegasi_baca_terkait" on public.delegasi_pj;
+create policy "delegasi_baca_terkait" on public.delegasi_pj for select to authenticated using (
+  pj_asal_id = auth.uid() or pj_pengganti_id = auth.uid()
+  or exists (
+    select 1 from public.jadwal_kelas j
+    where j.id = delegasi_pj.jadwal_id and (j.dosen_id = auth.uid() or public.has_role('baak') or public.has_role('kaprodi'))
+  )
+);
 
-create policy "delegasi_baca_terkait" on public.delegasi_pj
-  for select to authenticated
-  using (
-    pj_asal_id = auth.uid()
-    or pj_pengganti_id = auth.uid()
-    or exists (
-      select 1 from public.jadwal_kelas j
-      where j.id = delegasi_pj.jadwal_id
-        and (j.dosen_id = auth.uid() or public.has_role('baak') or public.has_role('kaprodi'))
-    )
-  );
+drop policy if exists "delegasi_hapus_pj" on public.delegasi_pj;
+create policy "delegasi_hapus_pj" on public.delegasi_pj for delete to authenticated using (pj_asal_id = auth.uid());
 
-create policy "delegasi_hapus_pj" on public.delegasi_pj
-  for delete to authenticated
-  using (pj_asal_id = auth.uid());
-
--- ---------------- sesi_perkuliahan ----------------
-create policy "sesi_buat_pj" on public.sesi_perkuliahan
-  for insert to authenticated
-  with check (
-    exists (
-      select 1 from public.jadwal_kelas j
-      where j.id = jadwal_id
-        and (
-          j.pj_id = auth.uid()
-          or exists (
-            select 1 from public.delegasi_pj d
-            where d.jadwal_id = j.id
-              and d.tanggal = sesi_perkuliahan.tanggal
-              and d.pj_pengganti_id = auth.uid()
-          )
-        )
-    )
-  );
-
-create policy "sesi_update_pj_dosen" on public.sesi_perkuliahan
-  for update to authenticated
-  using (
-    exists (
-      select 1 from public.jadwal_kelas j
-      where j.id = jadwal_id
-        and (
-          j.pj_id = auth.uid()
-          or j.dosen_id = auth.uid()
-          or exists (
-            select 1 from public.delegasi_pj d
-            where d.jadwal_id = j.id
-              and d.tanggal = sesi_perkuliahan.tanggal
-              and d.pj_pengganti_id = auth.uid()
-          )
-        )
+drop policy if exists "sesi_buat_pj" on public.sesi_perkuliahan;
+create policy "sesi_buat_pj" on public.sesi_perkuliahan for insert to authenticated with check (
+  exists (
+    select 1 from public.jadwal_kelas j
+    where j.id = jadwal_id and (
+      j.pj_id = auth.uid()
+      or exists (
+        select 1 from public.delegasi_pj d
+        where d.jadwal_id = j.id and d.tanggal = sesi_perkuliahan.tanggal and d.pj_pengganti_id = auth.uid()
+      )
     )
   )
-  with check (
-    exists (
-      select 1 from public.jadwal_kelas j
-      where j.id = jadwal_id
-        and (
-          j.pj_id = auth.uid()
-          or j.dosen_id = auth.uid()
-          or exists (
-            select 1 from public.delegasi_pj d
-            where d.jadwal_id = j.id
-              and d.tanggal = sesi_perkuliahan.tanggal
-              and d.pj_pengganti_id = auth.uid()
-          )
-        )
-    )
-  );
+);
 
-create policy "sesi_baca_mahasiswa" on public.sesi_perkuliahan
-  for select to authenticated
-  using (
-    exists (
-      select 1 from public.peserta_kelas pk
-      where pk.jadwal_id = sesi_perkuliahan.jadwal_id
-        and pk.mahasiswa_id = auth.uid()
-    )
-    or exists (
-      select 1 from public.jadwal_kelas j
-      where j.id = sesi_perkuliahan.jadwal_id
-        and (j.pj_id = auth.uid() or j.dosen_id = auth.uid())
-    )
-    or public.has_role('baak')
-    or public.has_role('kaprodi')
-  );
-
--- ---------------- presensi_mahasiswa ----------------
-create policy "presensi_buat_mahasiswa" on public.presensi_mahasiswa
-  for insert to authenticated
-  with check (
-    mahasiswa_id = auth.uid()
-    and exists (
-      select 1
-      from public.peserta_kelas pk
-      join public.sesi_perkuliahan s on s.jadwal_id = pk.jadwal_id
-      where s.id = presensi_mahasiswa.sesi_id
-        and pk.mahasiswa_id = auth.uid()
-    )
-  );
-
-create policy "presensi_baca_sendiri" on public.presensi_mahasiswa
-  for select to authenticated
-  using (
-    mahasiswa_id = auth.uid()
-    or exists (
-      select 1
-      from public.sesi_perkuliahan s
-      join public.jadwal_kelas j on j.id = s.jadwal_id
-      where s.id = presensi_mahasiswa.sesi_id
-        and (j.dosen_id = auth.uid() or public.has_role('kaprodi'))
-    )
-    or public.has_role('baak')
-  );
-
-create policy "presensi_koreksi_dosen" on public.presensi_mahasiswa
-  for update to authenticated
-  using (
-    exists (
-      select 1
-      from public.sesi_perkuliahan s
-      join public.jadwal_kelas j on j.id = s.jadwal_id
-      where s.id = presensi_mahasiswa.sesi_id
-        and j.dosen_id = auth.uid()
+drop policy if exists "sesi_update_pj_dosen" on public.sesi_perkuliahan;
+create policy "sesi_update_pj_dosen" on public.sesi_perkuliahan for update to authenticated using (
+  exists (
+    select 1 from public.jadwal_kelas j
+    where j.id = jadwal_id and (
+      j.pj_id = auth.uid() or j.dosen_id = auth.uid()
+      or exists (
+        select 1 from public.delegasi_pj d
+        where d.jadwal_id = j.id and d.tanggal = sesi_perkuliahan.tanggal and d.pj_pengganti_id = auth.uid()
+      )
     )
   )
-  with check (
-    exists (
-      select 1
-      from public.sesi_perkuliahan s
-      join public.jadwal_kelas j on j.id = s.jadwal_id
-      where s.id = presensi_mahasiswa.sesi_id
-        and j.dosen_id = auth.uid()
+) with check (
+  exists (
+    select 1 from public.jadwal_kelas j
+    where j.id = jadwal_id and (
+      j.pj_id = auth.uid() or j.dosen_id = auth.uid()
+      or exists (
+        select 1 from public.delegasi_pj d
+        where d.jadwal_id = j.id and d.tanggal = sesi_perkuliahan.tanggal and d.pj_pengganti_id = auth.uid()
+      )
     )
-  );
+  )
+);
+
+drop policy if exists "sesi_baca_mahasiswa" on public.sesi_perkuliahan;
+create policy "sesi_baca_mahasiswa" on public.sesi_perkuliahan for select to authenticated using (
+  exists (
+    select 1 from public.peserta_kelas pk
+    where pk.jadwal_id = sesi_perkuliahan.jadwal_id and pk.mahasiswa_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.jadwal_kelas j
+    where j.id = sesi_perkuliahan.jadwal_id and (j.pj_id = auth.uid() or j.dosen_id = auth.uid())
+  )
+  or public.has_role('baak')
+  or public.has_role('kaprodi')
+);
+
+drop policy if exists "presensi_buat_mahasiswa" on public.presensi_mahasiswa;
+create policy "presensi_buat_mahasiswa" on public.presensi_mahasiswa for insert to authenticated with check (
+  mahasiswa_id = auth.uid() and exists (
+    select 1 from public.peserta_kelas pk
+    join public.sesi_perkuliahan s on s.jadwal_id = pk.jadwal_id
+    where s.id = presensi_mahasiswa.sesi_id and pk.mahasiswa_id = auth.uid()
+  )
+);
+
+drop policy if exists "presensi_baca_sendiri" on public.presensi_mahasiswa;
+create policy "presensi_baca_sendiri" on public.presensi_mahasiswa for select to authenticated using (
+  mahasiswa_id = auth.uid()
+  or exists (
+    select 1 from public.sesi_perkuliahan s
+    join public.jadwal_kelas j on j.id = s.jadwal_id
+    where s.id = presensi_mahasiswa.sesi_id and (j.dosen_id = auth.uid() or public.has_role('kaprodi'))
+  )
+  or public.has_role('baak')
+);
+
+drop policy if exists "presensi_koreksi_dosen" on public.presensi_mahasiswa;
+create policy "presensi_koreksi_dosen" on public.presensi_mahasiswa for update to authenticated using (
+  exists (
+    select 1 from public.sesi_perkuliahan s
+    join public.jadwal_kelas j on j.id = s.jadwal_id
+    where s.id = presensi_mahasiswa.sesi_id and j.dosen_id = auth.uid()
+  )
+) with check (
+  exists (
+    select 1 from public.sesi_perkuliahan s
+    join public.jadwal_kelas j on j.id = s.jadwal_id
+    where s.id = presensi_mahasiswa.sesi_id and j.dosen_id = auth.uid()
+  )
+);

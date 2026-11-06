@@ -25,7 +25,7 @@ export interface DemoUser {
 
 export const DEMO_USERS: Record<DemoRole, DemoUser> = {
   mahasiswa: {
-    id: "mhs-1",
+    id: "babccf89-45a4-4622-bbc2-c0ef7b56246d",
     nama: "Sutiawan",
     email: "sutiawan@student.unsap.ac.id",
     role: "mahasiswa",
@@ -36,7 +36,7 @@ export const DEMO_USERS: Record<DemoRole, DemoUser> = {
     initials: "SU",
   },
   pj: {
-    id: "pj-1",
+    id: "da42b508-8257-4628-943c-86b7c3aa851a",
     nama: "Rizky Maulana",
     email: "rizky.maulana@student.unsap.ac.id",
     role: "pj",
@@ -47,7 +47,7 @@ export const DEMO_USERS: Record<DemoRole, DemoUser> = {
     initials: "RM",
   },
   dosen: {
-    id: "dsn-1",
+    id: "35d1258f-495f-462e-8841-eb9582a6d3f8",
     nama: "Agun Guntara, S.Kom., M.Kom",
     email: "agun.guntara@unsap.ac.id",
     role: "dosen",
@@ -58,7 +58,7 @@ export const DEMO_USERS: Record<DemoRole, DemoUser> = {
     initials: "AG",
   },
   kaprodi: {
-    id: "kpr-1",
+    id: "e2aa4bd6-c3b3-425c-90e9-266d863a07d8",
     nama: "Dr. Siti Rahayu, M.Kom",
     email: "siti.rahayu@unsap.ac.id",
     role: "kaprodi",
@@ -69,7 +69,7 @@ export const DEMO_USERS: Record<DemoRole, DemoUser> = {
     initials: "SR",
   },
   baak: {
-    id: "bak-1",
+    id: "ce7941ea-13f0-4c7c-b403-6afae1e487e4",
     nama: "Admin BAAK UNSAP",
     email: "baak@unsap.ac.id",
     role: "baak",
